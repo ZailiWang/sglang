@@ -93,9 +93,27 @@ class _ColumnvLLMParameter(BasevLLMParameter):
     ):
         if not use_presharded_weights:
             shard_size = self.data.shape[self.output_dim]
-            loaded_weight = loaded_weight.narrow(
-                self.output_dim, tp_rank * shard_size, shard_size
-            )
+
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+            from sglang.srt.utils import narrow_padded_param_and_loaded_weight
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    self.data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    tp_rank * shard_size,
+                    self.output_dim,
+                    shard_size,
+                )
+                assert param_data.shape == loaded_weight.shape
+                param_data.copy_(loaded_weight)
+                return
+            else:
+                loaded_weight = loaded_weight.narrow(
+                    self.output_dim, tp_rank * shard_size, shard_size
+                )
+
         assert self.data.shape == loaded_weight.shape
         self.data.copy_(loaded_weight)
 
@@ -116,10 +134,26 @@ class _ColumnvLLMParameter(BasevLLMParameter):
         param_data = self.data
 
         param_data = param_data.narrow(self.output_dim, shard_offset, shard_size)
-        if not use_presharded_weights:
-            loaded_weight = loaded_weight.narrow(
-                self.output_dim, tp_rank * shard_size, shard_size
+
+        from sglang.srt.managers.schedule_batch import global_server_args_dict
+        from sglang.srt.utils import narrow_padded_param_and_loaded_weight
+
+        if global_server_args_dict["device"] == "cpu":
+            param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                param_data,
+                loaded_weight,
+                0,  # param_data_start
+                tp_rank * shard_size,
+                self.output_dim,
+                shard_size,
+                not use_presharded_weights,
             )
+        else:
+            if not use_presharded_weights:
+                loaded_weight = loaded_weight.narrow(
+                    self.output_dim, tp_rank * shard_size, shard_size
+                )
+
         assert param_data.shape == loaded_weight.shape
         param_data.copy_(loaded_weight)
 
@@ -182,9 +216,28 @@ class RowvLLMParameter(BasevLLMParameter):
     ):
         if not use_presharded_weights:
             shard_size = self.data.shape[self.input_dim]
-            loaded_weight = loaded_weight.narrow(
-                self.input_dim, tp_rank * shard_size, shard_size
-            )
+
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+            from sglang.srt.utils import narrow_padded_param_and_loaded_weight
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    self.data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    tp_rank * shard_size,
+                    self.input_dim,
+                    shard_size,
+                )
+
+                assert param_data.shape == loaded_weight.shape
+                param_data.copy_(loaded_weight)
+
+                return
+            else:
+                loaded_weight = loaded_weight.narrow(
+                    self.input_dim, tp_rank * shard_size, shard_size
+                )
 
         if len(loaded_weight.shape) == 0:
             loaded_weight = loaded_weight.reshape(1)

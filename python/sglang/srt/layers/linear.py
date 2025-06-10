@@ -34,6 +34,7 @@ from sglang.srt.utils import (
     _process_weight_after_loading,
     cpu_has_amx_support,
     prepack_weight_if_needed,
+    narrow_padded_param_and_loaded_weight,
     set_weight_attrs,
 )
 
@@ -421,8 +422,24 @@ class ColumnParallelLinear(LinearBase):
         if output_dim is not None and not use_bitsandbytes_4bit:
             shard_size = param_data.shape[output_dim]
             start_idx = self.tp_rank * shard_size
-            if not self.use_presharded_weights:
-                loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
+
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    param_data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    start_idx,
+                    output_dim,
+                    shard_size,
+                    not self.use_presharded_weights,
+                )
+            else:
+                if not self.use_presharded_weights:
+                    loaded_weight = loaded_weight.narrow(
+                        output_dim, start_idx, shard_size
+                    )
 
         # Special case for loading scales off disk, which often do not
         # have a shape (such as in the case of AutoFP8).
@@ -641,10 +658,27 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
 
             param_data = param_data.narrow(output_dim, shard_offset, shard_size)
             start_idx = self.tp_rank * shard_size
-            # bitsandbytes loads the weights of the specific portion
-            # no need to narrow here
-            if not use_bitsandbytes_4bit and not self.use_presharded_weights:
-                loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
+
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    param_data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    start_idx,
+                    output_dim,
+                    shard_size,
+                    not use_bitsandbytes_4bit and not self.use_presharded_weights,
+                )
+            else:
+                # bitsandbytes loads the weights of the specific portion
+                # no need to narrow here
+                if not use_bitsandbytes_4bit and not self.use_presharded_weights:
+                    loaded_weight = loaded_weight.narrow(
+                        output_dim, start_idx, shard_size
+                    )
+
         # Special case for AQLM codebooks.
         elif is_metadata:
             # metadata indicates fixed size concatenated along dim 0
@@ -1111,10 +1145,25 @@ class QKVParallelLinear(ColumnParallelLinear):
                 shard_id = self.tp_rank // self.num_kv_head_replicas
             start_idx = shard_id * shard_size
 
-            # bitsandbytes loads the weights of the specific portion
-            # no need to narrow here
-            if not use_bitsandbytes_4bit and not self.use_presharded_weights:
-                loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    param_data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    start_idx,
+                    output_dim,
+                    shard_size,
+                    not use_bitsandbytes_4bit and not self.use_presharded_weights,
+                )
+            else:
+                # bitsandbytes loads the weights of the specific portion
+                # no need to narrow here
+                if not use_bitsandbytes_4bit and not self.use_presharded_weights:
+                    loaded_weight = loaded_weight.narrow(
+                        output_dim, start_idx, shard_size
+                    )
 
         # Special case for for AQLM codebooks.
         elif is_metadata:
@@ -1256,7 +1305,20 @@ class RowParallelLinear(LinearBase):
         ):
             shard_size = param_data.shape[input_dim]
             start_idx = self.tp_rank * shard_size
-            loaded_weight = loaded_weight.narrow(input_dim, start_idx, shard_size)
+
+            from sglang.srt.managers.schedule_batch import global_server_args_dict
+
+            if global_server_args_dict["device"] == "cpu":
+                param_data, loaded_weight = narrow_padded_param_and_loaded_weight(
+                    param_data,
+                    loaded_weight,
+                    0,  # param_data_start
+                    start_idx,
+                    input_dim,
+                    shard_size,
+                )
+            else:
+                loaded_weight = loaded_weight.narrow(input_dim, start_idx, shard_size)
 
         # Special case for loading scales off disk, which often do not
         # have a shape (such as in the case of AutoFP8).

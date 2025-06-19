@@ -124,7 +124,7 @@ def _fused_topk_postprocess(
 
 
 # This is used by the Deepseek V2/V3/R1 series models
-@torch.compile(dynamic=True, backend=get_compiler_backend())
+# @torch.compile(dynamic=True, backend=get_compiler_backend())
 def grouped_topk(
     hidden_states: torch.Tensor,
     gating_output: torch.Tensor,
@@ -293,7 +293,7 @@ def biased_grouped_topk(
     renormalize: bool,
     num_expert_group: int = 0,
     topk_group: int = 0,
-    compiled: bool = True,
+    compiled: bool = False,
     num_fused_shared_experts: int = 0,
     routed_scaling_factor: Optional[float] = None,
     num_token_non_padded: Optional[torch.Tensor] = None,

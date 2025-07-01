@@ -72,6 +72,7 @@ from sgl_kernel.speculative import (
     verify_tree_greedy,
 )
 from sgl_kernel.version import __version__
+from sgl_kernel.meta import *
 
 build_tree_kernel = (
     None  # TODO(ying): remove this after updating the sglang python code.

@@ -2281,16 +2281,17 @@ def support_triton(backend: str) -> bool:
 
 try:
     import sgl_kernel
-
     is_intel_amx_backend_available = hasattr(
         torch.ops.sgl_kernel, "convert_weight_packed"
     )
-except:
+    is_amx_tile_supported = torch._C._cpu._is_amx_tile_supported()
+except ImportError as e:
     is_intel_amx_backend_available = False
+    is_amx_tile_supported = torch._C._cpu._is_amx_tile_supported()
 
 
 def cpu_has_amx_support():
-    return torch._C._cpu._is_amx_tile_supported() and is_intel_amx_backend_available
+    return is_amx_tile_supported and is_intel_amx_backend_available
 
 def is_shm_available(dtype, world_size, local_size):
     return (

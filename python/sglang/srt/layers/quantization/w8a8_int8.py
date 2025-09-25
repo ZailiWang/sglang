@@ -40,9 +40,9 @@ from sglang.srt.layers.quantization.base_config import (
 from sglang.srt.layers.quantization.compressed_tensors.utils import should_ignore_layer
 from sglang.srt.layers.quantization.int8_kernel import (
     per_token_quant_int8,
-    naive_per_token_quant_int8,
-    naive_w8a8_per_token_matmul,
-    naive_w8a8_per_column_moe,
+    native_per_token_quant_int8,
+    native_w8a8_per_token_matmul,
+    native_w8a8_per_column_moe,
 )
 from sglang.srt.layers.quantization.unquant import UnquantizedLinearMethod
 from sglang.srt.utils import (
@@ -398,8 +398,8 @@ class W8A8Int8LinearMethod(LinearMethodBase):
                     True,  # is_vnni
                 )
             else:
-                x_q, x_scale = naive_per_token_quant_int8(x)
-                return naive_w8a8_per_token_matmul(
+                x_q, x_scale = native_per_token_quant_int8(x)
+                return native_w8a8_per_token_matmul(
                     x_q, layer.weight, x_scale, layer.weight_scale, bias, x.dtype
                 )
 
@@ -543,7 +543,7 @@ class W8A8Int8MoEMethod(FusedMoEMethodBase):
                     True,  # is_vnni
                 )
             else:
-                output = naive_w8a8_per_column_moe(
+                output = native_w8a8_per_column_moe(
                     x,
                     layer.w13_weight,
                     layer.w2_weight,

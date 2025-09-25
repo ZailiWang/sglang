@@ -425,23 +425,7 @@ def w8a8_block_int8_matmul(
     return C
 
 
-def naive_silu_and_mul(x: torch.Tensor) -> torch.Tensor:
-    """This function is a naive implementation of silu_and_mul with native torch ops.
-
-    Args:
-        x: The input tensor, e.g., activation.
-
-    Returns:
-        torch.Tensor: The result of silu_and_mul.
-    """
-    dtype = x.dtype
-    x = x.to(torch.float32)
-    d = x.shape[-1] // 2
-    out = torch.nn.functional.silu(x[..., :d]) * x[..., d:]
-    return out.to(dtype)
-
-
-def naive_per_token_quant_int8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def native_per_token_quant_int8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """This function is a naive implementation of per token int8 quantization.
 
     Args:
@@ -461,7 +445,7 @@ def naive_per_token_quant_int8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Ten
     return x_q, scale_x
 
 
-def naive_w8a8_per_token_matmul(
+def native_w8a8_per_token_matmul(
     A: torch.Tensor,
     B: torch.Tensor,
     As: torch.Tensor,
@@ -505,7 +489,7 @@ def naive_w8a8_per_token_matmul(
     return C.reshape(origin_C_shape).to(output_dtype)
 
 
-def naive_w8a8_per_column_moe(
+def native_w8a8_per_column_moe(
     a: torch.Tensor,
     w1,
     w2,
@@ -524,10 +508,10 @@ def naive_w8a8_per_column_moe(
     """
     print(type(topk_ids))
     print(f"topk_ids shape: {topk_ids.shape}")
-    topk = topk_ids.shape[0]
+    topk = topk_ids.shape[1]
     B, D = a.shape
     # Perform per-token quantization
-    a_q, a_s = naive_per_token_quant_int8(a)
+    a_q, a_s = native_per_token_quant_int8(a)
     # Repeat tokens to match topk
     a_q = a_q.view(B, -1, D).repeat(1, topk, 1).reshape(-1, D)
     # Also repeat the scale
@@ -543,15 +527,16 @@ def naive_w8a8_per_column_moe(
         mask = topk_ids == i
         if mask.sum():
             # First MLP layer: note that a_s is now per-token
-            inter_out = naive_w8a8_per_token_matmul(
+            inter_out = native_w8a8_per_token_matmul(
                 a_q[mask], w1[i].t(), a_s[mask], w1_s[i], output_dtype=torch.float32
             )
             # Activation function
-            act_out = naive_silu_and_mul(inter_out)
+            from sglang.srt.layers.activation import SiluAndMul
+            act_out = SiluAndMul.forward_native(inter_out)
             # Quantize activation output with per-token
-            act_out_q, act_out_s = naive_per_token_quant_int8(act_out)
+            act_out_q, act_out_s = native_per_token_quant_int8(act_out)
             # Second MLP layer
-            out[mask] = naive_w8a8_per_token_matmul(
+            out[mask] = native_w8a8_per_token_matmul(
                 act_out_q, w2[i].t(), act_out_s, w2_s[i], output_dtype=torch.float32
             )
     # Apply routing weights and sum

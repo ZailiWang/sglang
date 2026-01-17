@@ -7,25 +7,47 @@ ARG VER_SGLANG=main
 ARG VER_TORCH=2.9.0
 ARG VER_TORCHVISION=0.24.0
 ARG VER_TRITON=3.5.0
+ARG GCC15
 
 RUN apt-get update && \
     apt-get full-upgrade -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+    build-essential \
     ca-certificates \
-    git \
     curl \
-    wget \
-    vim \
+    git \
     gcc \
     g++ \
+    wget \
+    vim \
+    gawk \
+    flex \
     make \
     libsqlite3-dev \
     google-perftools \
     libtbb-dev \
     libnuma-dev \
+    libgmp-dev \
+    libmpfr-dev \
+    libmpc-dev \
     numactl
 
 WORKDIR /opt
+
+# Install GCC 15.2.0
+RUN if [[ ! -z "$GCC15" ]] ; then \
+    git clone -b releases/gcc-15.2.0 https://gcc.gnu.org/git/gcc.git ; \
+    cd gcc ; \
+    mkdir build ; \
+    cd build ; \
+    ../configure --disable-multilib --enable-languages=c,c++ --prefix=/usr/local/gcc-15 ; \
+    make -j$(nproc) ; \
+    make install ; \
+    update-alternatives --install /usr/bin/gcc gcc /usr/local/gcc-15/bin/gcc 100 ; \
+    update-alternatives --install /usr/bin/g++ g++ /usr/local/gcc-15/bin/g++ 100 ; \
+    cd ../.. ; \
+    rm -rf gcc ; \
+    fi
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     source $HOME/.local/bin/env && \

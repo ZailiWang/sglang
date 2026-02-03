@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-project(sgl_kernel)
+project(sgl_kernel_cpu)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,10 +91,10 @@ add_compile_options(
     -fopenmp
 )
 
-Python_add_library(common_ops MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_SOABI ${SOURCES})
-target_link_libraries(common_ops PRIVATE ${TORCH_LIBRARIES} ${NUMA_LIB})
-target_include_directories(common_ops PRIVATE ${TORCH_INCLUDE_DIRS})
+Python_add_library(common_ops_cpu MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_SOABI ${SOURCES})
+target_link_libraries(common_ops_cpu PRIVATE ${TORCH_LIBRARIES} ${NUMA_LIB})
+target_include_directories(common_ops_cpu PRIVATE ${TORCH_INCLUDE_DIRS})
 
-install(TARGETS common_ops
-    LIBRARY DESTINATION sgl_kernel
+install(TARGETS common_ops_cpu
+    LIBRARY DESTINATION sgl_kernel_cpu
 )

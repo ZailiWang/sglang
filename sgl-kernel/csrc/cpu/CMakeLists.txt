@@ -95,6 +95,15 @@ Python_add_library(common_ops_cpu MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_S
 target_link_libraries(common_ops_cpu PRIVATE ${TORCH_LIBRARIES} ${NUMA_LIB})
 target_include_directories(common_ops_cpu PRIVATE ${TORCH_INCLUDE_DIRS})
 
+# Install Python package
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../python/sgl_kernel/
+    DESTINATION sgl_kernel_cpu
+    COMPONENT python
+    FILES_MATCHING
+    PATTERN "*.py"
+    PATTERN "__pycache__" EXCLUDE)
+
 install(TARGETS common_ops_cpu
     LIBRARY DESTINATION sgl_kernel_cpu
+    COMPONENT python
 )

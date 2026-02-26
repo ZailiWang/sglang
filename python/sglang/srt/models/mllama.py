@@ -308,7 +308,11 @@ class MllamaVisionModel(nn.Module):
 
         self.num_patches = (self.image_size // self.patch_size) ** 2 + 1
         self.scale = config.hidden_size**-0.5
-        out_channels = config.head_dim * config.padded_attention_heads if hasattr(config, "padded_attention_heads") else config.hidden_size
+        out_channels = (
+            config.head_dim * config.padded_attention_heads
+            if hasattr(config, "padded_attention_heads")
+            else config.hidden_size
+        )
 
         self.patch_embedding = ColumnParallelConv2dPatch(
             in_channels=config.num_channels,
@@ -889,9 +893,7 @@ class MllamaForConditionalGeneration(nn.Module):
                 self.image_size,
                 dtype=torch.float32,
             )
-            batched_ar_ids = torch.ones(
-                bs, max_num_images, dtype=torch.int64
-            )
+            batched_ar_ids = torch.ones(bs, max_num_images, dtype=torch.int64)
             batched_ar_mask = torch.zeros(
                 bs, max_num_images, max_num_tiles, dtype=torch.int64
             )

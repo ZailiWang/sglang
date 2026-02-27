@@ -543,4 +543,4 @@ TORCH_LIBRARY_IMPL(sgl_kernel, CatchAll, m) {
   m.impl("initialize", &initialize);
 }
 
-REGISTER_EXTENSION(common_ops_cpu)
+REGISTER_EXTENSION(common_ops)

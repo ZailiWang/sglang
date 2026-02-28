@@ -46,6 +46,14 @@ VertexAI = LazyImport("sglang.lang.backend.vertexai", "VertexAI")
 ServerArgs = LazyImport("sglang.srt.server_args", "ServerArgs")
 Engine = LazyImport("sglang.srt.entrypoints.engine", "Engine")
 
+
+try:
+    from sgl_kernel_cpu import common_ops
+
+    print("CPU kernels are imported for hetero architecture cooperation!")
+except ImportError:
+    pass
+
 __all__ = [
     "Engine",
     "Runtime",

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-project(${PROJECT_NAME})
+if(HETERO_CPU_PACKAGE STREQUAL "ON")
+    set(PACKAGE_INSTALL_DIR "sgl_kernel_cpu")
+else()
+    set(PACKAGE_INSTALL_DIR "sgl_kernel")
+endif()
+project(${PACKAGE_INSTALL_DIR})
+message(STATUS "Package will be installed as: ${PACKAGE_INSTALL_DIR}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -97,13 +103,13 @@ target_include_directories(common_ops PRIVATE ${TORCH_INCLUDE_DIRS})
 
 # Install Python package
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../python/sgl_kernel/
-    DESTINATION ${PROJECT_NAME}
+    DESTINATION ${PACKAGE_INSTALL_DIR}
     COMPONENT python
     FILES_MATCHING
     PATTERN "*.py"
     PATTERN "__pycache__" EXCLUDE)
 
 install(TARGETS common_ops
-    LIBRARY DESTINATION ${PROJECT_NAME}
+    LIBRARY DESTINATION ${PACKAGE_INSTALL_DIR}
     COMPONENT python
 )

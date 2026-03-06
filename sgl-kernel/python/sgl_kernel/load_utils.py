@@ -99,7 +99,7 @@ def _load_architecture_specific_ops():
             logger.debug(f"[sgl_kernel] ✓ Successfully loaded {variant_name}")
             logger.debug(f"[sgl_kernel] ✓ Module file: {common_ops.__file__}")
             try:
-                # Try to load CPU kernels to facilitate cooperation from herero CUDA+CPU architectures
+                # Try to load CPU kernels to facilitate cooperation from CUDA+CPU hetero architectures
                 cpu_kernel_pattern = str(
                     Path(__file__).parent.parent / "sgl_kernel_cpu" / "common_ops.*"
                 )

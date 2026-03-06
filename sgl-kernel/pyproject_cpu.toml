@@ -36,4 +36,4 @@ minimum-version = "build-system.requires"
 install.components = ["python"]
 
 [tool.scikit-build.cmake.define]
-PROJECT_NAME = {env = "CPU_PACKAGE_DIR", default = "sgl_kernel"}
+HETERO_CPU_PACKAGE = {env = "HETERO_CPU_PACKAGE", default = "OFF"}

@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-if(HETERO_CPU_PACKAGE STREQUAL "ON")
+if(HETERO_CPU_PACKAGE)
     set(PACKAGE_INSTALL_DIR "sgl_kernel_cpu")
+    message(STATUS "Package will be installed as: ${PACKAGE_INSTALL_DIR}")
 else()
     set(PACKAGE_INSTALL_DIR "sgl_kernel")
 endif()
 project(${PACKAGE_INSTALL_DIR})
-message(STATUS "Package will be installed as: ${PACKAGE_INSTALL_DIR}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

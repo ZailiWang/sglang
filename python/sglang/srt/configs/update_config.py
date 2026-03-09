@@ -86,9 +86,7 @@ def adjust_tp_num_heads_if_necessary(model_config, tp_size, is_post_update):
                 )
 
 
-def update_intermediate_size(
-    model_config, attr_name, intermediate_padding_size, keep_origin=False
-):
+def update_intermediate_size(model_config, attr_name, intermediate_padding_size):
     attr_value = intermediate_padding_size
     if hasattr(model_config, "hf_config") and hasattr(
         model_config.hf_config, attr_name
@@ -97,6 +95,7 @@ def update_intermediate_size(
     elif hasattr(model_config, attr_name):
         attr_value = getattr(model_config, attr_name)
     origin_value = attr_value
+    origin_name = "original_" + attr_name
 
     if attr_value % intermediate_padding_size != 0:
         from sglang.srt.layers.vocab_parallel_embedding import pad_vocab_size
@@ -104,12 +103,13 @@ def update_intermediate_size(
         attr_value = pad_vocab_size(attr_value, intermediate_padding_size)
         if hasattr(model_config, "hf_config"):
             setattr(model_config.hf_config, attr_name, attr_value)
+            setattr(model_config.hf_config, origin_name, origin_value)
             if hasattr(model_config, "hf_text_config"):
                 setattr(model_config.hf_text_config, attr_name, attr_value)
+                setattr(model_config.hf_text_config, origin_name, origin_value)
         else:
             setattr(model_config, attr_name, attr_value)
-            if keep_origin:
-                setattr(model_config, "original_" + attr_name, origin_value)
+            setattr(model_config, origin_name, origin_value)
 
     return model_config
 
@@ -202,6 +202,12 @@ def adjust_config_with_unaligned_cpu_tp(
     adjust_tp_num_heads_if_necessary(model_config.hf_config, tp_size, True)
 
     intermediate_padding_size = tp_size * get_moe_padding_size(weight_block_size)
+    if model_config.quantization == "mxfp4":
+        # for mxfp4 quantization, 2 mx4 value are packed in 1 uint8,
+        # so we need to double the intermediate padding size
+        # to ensure the padded intermediate size is divisible by 2 for proper packing.
+        intermediate_padding_size = intermediate_padding_size * 2
+
     model_config = update_intermediate_size(
         model_config, "moe_intermediate_size", intermediate_padding_size
     )

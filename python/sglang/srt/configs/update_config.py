@@ -246,7 +246,6 @@ def adjust_config_with_unaligned_cpu_tp(
             vision_cfg_obj,
             "intermediate_size",
             intermediate_padding_size,
-            keep_origin=True,
         )
         update_fields = ["projector_input_dim"]
         for field in update_fields:

@@ -509,7 +509,7 @@ class MllamaTextCrossAttention(nn.Module):
         self.dropout = config.dropout
         self.hidden_size = config.hidden_size
         self.head_dim = config.hidden_size // self.num_heads
-        # Use original head_dim since num_heads might be changed for TP num dividability
+        # Use original head_dim since num_heads might be changed for TP num divisibility
         if hasattr(config, "head_dim"):
             self.head_dim = config.head_dim
         self.layer_id = layer_id

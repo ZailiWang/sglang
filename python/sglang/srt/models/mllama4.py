@@ -126,10 +126,8 @@ class Llama4VisionPixelShuffleMLP(nn.Module):
         super().__init__()
         self.pixel_shuffle_ratio = config.pixel_shuffle_ratio
         self.mlp = Llama4VisionMLP(
-            input_size=(
-                config.original_intermediate_size
-                if hasattr(config, "original_intermediate_size")
-                else config.intermediate_size
+            input_size=getattr(
+                config, "original_intermediate_size", config.intermediate_size
             ),
             intermediate_size=config.projector_input_dim,
             output_size=config.projector_output_dim,

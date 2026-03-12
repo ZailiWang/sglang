@@ -154,10 +154,6 @@ def adjust_config_with_unaligned_cpu_tp(
             model_config.hf_config.text_config.hidden_size
             // model_config.hf_config.text_config.num_attention_heads
         )
-        model_config.hf_config.vision_config.head_dim = (
-            model_config.hf_config.vision_config.hidden_size
-            // model_config.hf_config.vision_config.attention_heads
-        )
 
     if (
         model_config.num_attention_heads % tp_size != 0
@@ -227,11 +223,12 @@ def adjust_config_with_unaligned_cpu_tp(
             att_heads = vision_cfg_obj.num_attention_heads
         if hasattr(vision_cfg_obj, "attention_heads"):
             att_heads = vision_cfg_obj.attention_heads
-        if not hasattr(vision_cfg_obj, "head_dim") and hasattr(
-            vision_cfg_obj, "hidden_size"
-        ):
-            vision_cfg_obj.head_dim = vision_cfg_obj.hidden_size // att_heads
         if att_heads > 0 and att_heads % tp_size != 0:
+            if not hasattr(vision_cfg_obj, "head_dim") and hasattr(
+                vision_cfg_obj, "hidden_size"
+            ):
+                vision_cfg_obj.head_dim = vision_cfg_obj.hidden_size // att_heads
+
             from sglang.srt.layers.vocab_parallel_embedding import pad_vocab_size
 
             pad_size = get_num_heads_padding_size(

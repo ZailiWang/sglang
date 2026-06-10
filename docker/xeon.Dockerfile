@@ -19,12 +19,17 @@ RUN apt-get update && \
     google-perftools \
     libtbb-dev \
     libnuma-dev \
-    numactl
+    numactl \
+    software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    DEBIAN_FRONTEND=noninteractive apt install -y gcc-15 g++-15 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-15 100 --slave /usr/bin/g++ g++ /usr/bin/g++-15
 
 WORKDIR /opt
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     source $HOME/.local/bin/env && \
+    uv python install 3.12 && \
     uv venv --python 3.12
 
 RUN echo -e '[[index]]\nname = "torch"\nurl = "https://download.pytorch.org/whl/cpu"\n\n[[index]]\nname = "torchvision"\nurl = "https://download.pytorch.org/whl/cpu"\n\n[[index]]\nname = "torchaudio"\nurl = "https://download.pytorch.org/whl/cpu"\n\n[[index]]\nname = "triton"\nurl = "https://download.pytorch.org/whl/cpu"' > .venv/uv.toml

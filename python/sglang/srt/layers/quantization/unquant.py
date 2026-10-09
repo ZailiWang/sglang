@@ -1191,7 +1191,7 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, BaseFusedOp):
 
         moe_runner_config = self.moe_runner_config
 
-        if use_intel_amx_backend(layer):
+        if use_intel_amx_backend(layer) and moe_runner_config.activation != "relu2":
             from sglang.srt.layers.moe.topk import apply_topk_weights_cpu
 
             topk_weights, topk_ids, _ = topk_output

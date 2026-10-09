@@ -269,6 +269,36 @@ def mamba_chunk_scan_combined(
         state_dtype: The data type of the ssm state
     """
 
+    if x.device.type == "cpu":
+        from .torch_native import mamba_chunk_scan_combined_native
+
+        return mamba_chunk_scan_combined_native(
+            x,
+            dt,
+            A,
+            B,
+            C,
+            chunk_size,
+            D=D,
+            z=z,
+            dt_bias=dt_bias,
+            initial_states=initial_states,
+            seq_idx=seq_idx,
+            chunk_indices=chunk_indices,
+            chunk_offsets=chunk_offsets,
+            cu_seqlens=cu_seqlens,
+            dt_softplus=dt_softplus,
+            dt_limit=dt_limit,
+            out=out,
+            return_final_states=return_final_states,
+            return_varlen_states=return_varlen_states,
+            return_intermediate_states=return_intermediate_states,
+            state_dtype=state_dtype,
+            return_track_states=return_track_states,
+            track_seq_idx=track_seq_idx,
+            track_end_locs=track_end_locs,
+        )
+
     if not return_varlen_states:
         cu_seqlens = None
     else:

@@ -291,9 +291,7 @@ class NemotronHMoE(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         # router_scores: [num_tokens, num_experts]
         # bf16 gemm on tensor cores with fp32 accumulation/output for sigmoid/topk.
-        router_logits = torch.mm(
-            hidden_states, self.gate.weight.t(), out_dtype=torch.float32
-        )
+        router_logits = self._compute_router_logits(hidden_states)
         if self.shared_experts is not None:
             shared_output = self.shared_experts(hidden_states)
         else:
@@ -320,16 +318,23 @@ class NemotronHMoE(nn.Module):
         with self.device_module.stream(alt_stream):
             # router_scores: [num_tokens, num_experts]
             # bf16 gemm on tensor cores with fp32 accumulation/output for sigmoid/topk.
-            router_logits = torch.mm(
-                hidden_states, self.gate.weight.t(), out_dtype=torch.float32
-            )
+            router_logits = self._compute_router_logits(hidden_states)
             topk_output = self.topk(hidden_states, router_logits)
             if self.use_latent_moe:
                 hidden_states = self._apply_fc1_latent_proj(hidden_states)
             final_hidden_states = self.experts(hidden_states, topk_output)
-        get_current_device_stream_fast().wait_stream(alt_stream)
 
+        get_current_device_stream_fast().wait_stream(alt_stream)
         return final_hidden_states, shared_output
+
+    def _compute_router_logits(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # aten::mm.dtype is not implemented by the CPU backend in some PyTorch
+        # builds.  CPU inference still needs fp32 router logits for topk, so
+        # explicitly upcast inputs before matmul instead of using out_dtype.
+        gate_weight_t = self.gate.weight.t()
+        if hidden_states.device.type == "cpu":
+            return torch.mm(hidden_states.float(), gate_weight_t.float())
+        return torch.mm(hidden_states, gate_weight_t, out_dtype=torch.float32)
 
     def _apply_latent_projection(
         self,

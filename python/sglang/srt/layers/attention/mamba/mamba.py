@@ -8,6 +8,10 @@ from sglang.kernels.ops.mamba.triton_ops import (
     mamba_chunk_scan_combined,
     selective_state_update,
 )
+from sglang.kernels.ops.mamba.triton_ops.torch_native import (
+    mamba_chunk_scan_combined_native,
+    selective_state_update_native,
+)
 from sglang.srt.configs.mamba_utils import (
     Mamba2CacheParams,
     extra_groups_for_head_shards,
@@ -51,6 +55,12 @@ if is_cuda():
         causal_conv1d_fn,
         causal_conv1d_update,
     )
+elif is_cpu():
+    from sgl_kernel.mamba import causal_conv1d_fn_cpu, causal_conv1d_update_cpu
+
+    causal_conv1d_fn = causal_conv1d_fn_cpu
+    causal_conv1d_update = causal_conv1d_update_cpu
+
 elif is_npu():
     from sgl_kernel_npu.mamba.causal_conv1d import (
         causal_conv1d_fn_npu as causal_conv1d_fn,
@@ -488,12 +498,16 @@ class MambaMixer2(torch.nn.Module):
                 self.intermediate_size // self.tp_size,
                 self.conv_dim // self.tp_size,
                 self.num_heads // self.tp_size,
-            ],
+                ],
             dim=-1,
         )
-        conv_weights = self.conv1d.weight.view(
-            self.conv1d.weight.size(0), self.conv1d.weight.size(2)
-        )
+        conv1d_weight = self.conv1d.weight
+        if conv1d_weight.dim() == 3:
+            conv_weights = conv1d_weight.view(
+                conv1d_weight.size(0), conv1d_weight.size(2)
+            )
+        elif conv1d_weight.dim() == 2:
+            conv_weights = conv1d_weight
 
         # - get hidden_states, B and C after depthwise convolution.
         split_hidden_states_B_C_fn = lambda hidden_states_B_C: torch.split(
@@ -574,7 +588,7 @@ class MambaMixer2(torch.nn.Module):
             has_initial_states_p = mixed_metadata.has_initial_states
             prep_initial_states = mixed_metadata.prep_initial_states
             cache_indices = state_indices_tensor_p
-            x = hidden_states_B_C_p.transpose(
+            x = hidden_states_B_C_p.contiguous().transpose(
                 0, 1
             )  # this is the form that causal-conv see
             # Runs once per mamba layer
@@ -586,9 +600,10 @@ class MambaMixer2(torch.nn.Module):
                 conv_state[metadata.conv_states_mask_indices] = x_to_track
             ccfn = (
                 causal_conv1d_fn
-                if not use_triton_causal_conv
+                if is_cpu() or not use_triton_causal_conv
                 else causal_conv1d_fn_triton
             )
+            self.conv1d.bias.data = self.conv1d.bias.data.to(dtype=x.dtype)
             hidden_states_B_C_p = ccfn(
                 x,
                 conv_weights,
@@ -613,7 +628,12 @@ class MambaMixer2(torch.nn.Module):
                 )
 
             # NOTE: final output is an in-place update of out tensor
-            intermediate_states, varlen_state, track_states = mamba_chunk_scan_combined(
+            mamba_chunk_scan_combined_op = (
+                mamba_chunk_scan_combined_native
+                if hidden_states_p.device.type == "cpu"
+                else mamba_chunk_scan_combined
+            )
+            intermediate_states, varlen_state, track_states = mamba_chunk_scan_combined_op(
                 hidden_states_p.view(
                     1, num_prefill_tokens, local_num_heads, self.head_dim
                 ),
@@ -689,7 +709,7 @@ class MambaMixer2(torch.nn.Module):
             else:
                 ccu = (
                     causal_conv1d_update
-                    if not use_triton_causal_conv
+                    if is_cpu() or not use_triton_causal_conv
                     else causal_conv1d_update_triton
                 )
                 hidden_states_B_C_d = ccu(
@@ -717,8 +737,13 @@ class MambaMixer2(torch.nn.Module):
             C_d = C_d.view(-1, n_groups, C_d.shape[1] // n_groups)
             hidden_states_d = hidden_states_d.view(-1, local_num_heads, self.head_dim)
 
+            selective_state_update_op = (
+                selective_state_update_native
+                if ssm_state.device.type == "cpu"
+                else selective_state_update
+            )
             if is_target_verify:
-                selective_state_update(
+                selective_state_update_op(
                     ssm_state,
                     hidden_states_d.view(
                         num_decodes,
@@ -753,7 +778,7 @@ class MambaMixer2(torch.nn.Module):
                     intermediate_state_indices=self.intermediate_state_indices,
                 )
             else:
-                selective_state_update(
+                selective_state_update_op(
                     ssm_state,
                     hidden_states_d,
                     dt_d,

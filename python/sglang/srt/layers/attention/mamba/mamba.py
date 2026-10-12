@@ -8,10 +8,6 @@ from sglang.kernels.ops.mamba.triton_ops import (
     mamba_chunk_scan_combined,
     selective_state_update,
 )
-from sglang.kernels.ops.mamba.triton_ops.torch_native import (
-    mamba_chunk_scan_combined_native,
-    selective_state_update_native,
-)
 from sglang.srt.configs.mamba_utils import (
     Mamba2CacheParams,
     extra_groups_for_head_shards,
@@ -628,12 +624,7 @@ class MambaMixer2(torch.nn.Module):
                 )
 
             # NOTE: final output is an in-place update of out tensor
-            mamba_chunk_scan_combined_op = (
-                mamba_chunk_scan_combined_native
-                if hidden_states_p.device.type == "cpu"
-                else mamba_chunk_scan_combined
-            )
-            intermediate_states, varlen_state, track_states = mamba_chunk_scan_combined_op(
+            intermediate_states, varlen_state, track_states = mamba_chunk_scan_combined(
                 hidden_states_p.view(
                     1, num_prefill_tokens, local_num_heads, self.head_dim
                 ),
@@ -737,13 +728,8 @@ class MambaMixer2(torch.nn.Module):
             C_d = C_d.view(-1, n_groups, C_d.shape[1] // n_groups)
             hidden_states_d = hidden_states_d.view(-1, local_num_heads, self.head_dim)
 
-            selective_state_update_op = (
-                selective_state_update_native
-                if ssm_state.device.type == "cpu"
-                else selective_state_update
-            )
             if is_target_verify:
-                selective_state_update_op(
+                selective_state_update(
                     ssm_state,
                     hidden_states_d.view(
                         num_decodes,
@@ -778,7 +764,7 @@ class MambaMixer2(torch.nn.Module):
                     intermediate_state_indices=self.intermediate_state_indices,
                 )
             else:
-                selective_state_update_op(
+                selective_state_update(
                     ssm_state,
                     hidden_states_d,
                     dt_d,

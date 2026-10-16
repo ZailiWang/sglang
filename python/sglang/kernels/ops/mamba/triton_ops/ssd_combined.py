@@ -249,11 +249,18 @@ def _mamba_chunk_scan_cpu_varlen(
     batch, _, nheads, headdim = x.shape
     dstate = B.shape[-1]
     offsets = [int(value) for value in cu_seqlens.tolist()]
+    total_tokens = x.shape[1]
     output = torch.empty_like(x) if out is None else out
     final_by_sequence = []
-    chunk_states = []
     result_dtype = state_dtype or C.dtype
     cpu_scan = torch.ops.sgl_kernel.mamba_chunk_scan_combined_cpu
+
+    def initial_state_for(seq_idx):
+        if initial_states is not None:
+            return initial_states[seq_idx].to(result_dtype)
+        return torch.zeros(
+            nheads, headdim, dstate, dtype=result_dtype, device=x.device
+        )
 
     def run_segment(seq_idx, start, end, segment_out=None):
         init = (
@@ -283,11 +290,6 @@ def _mamba_chunk_scan_cpu_varlen(
         segment_out = output[:, start:end]
         final_state = run_segment(seq_idx, start, end, segment_out)
         final_by_sequence.append(final_state)
-        if return_intermediate_states or return_track_states:
-            for chunk_end in range(start + chunk_size, end + chunk_size, chunk_size):
-                chunk_end = min(chunk_end, end)
-                if chunk_end > start:
-                    chunk_states.append(run_segment(seq_idx, start, chunk_end))
 
     if final_by_sequence:
         varlen_states = torch.cat(final_by_sequence, dim=0)
@@ -298,12 +300,33 @@ def _mamba_chunk_scan_cpu_varlen(
         )
         varlen_states = final_states.new_empty((0, nheads, headdim, dstate))
 
-    if chunk_states:
-        intermediate_states = torch.stack(chunk_states).unsqueeze(0)
-    else:
-        intermediate_states = torch.empty(
-            (1, 0, nheads, headdim, dstate), dtype=result_dtype, device=x.device
+    if return_intermediate_states or return_track_states:
+        # Match the Triton contract: `intermediate_states[0, k]` is the SSM
+        # state *entering* flattened global chunk k, i.e. the state at token
+        # boundary `k * chunk_size`. Prefix-cache tracking indexes this tensor
+        # directly with `end_loc // chunk_size`, so returning "state after chunk
+        # k" would shift every tracked cache state by one chunk.
+        num_global_chunks = (total_tokens + chunk_size - 1) // chunk_size
+        chunk_states = []
+        seq_idx = 0
+        for chunk_idx in range(num_global_chunks):
+            boundary = chunk_idx * chunk_size
+            while seq_idx + 1 < len(offsets) - 1 and boundary >= offsets[seq_idx + 1]:
+                seq_idx += 1
+            start = offsets[seq_idx]
+            if boundary == start:
+                chunk_states.append(initial_state_for(seq_idx))
+            else:
+                chunk_states.append(run_segment(seq_idx, start, boundary)[0])
+        intermediate_states = (
+            torch.stack(chunk_states).unsqueeze(0)
+            if chunk_states
+            else torch.empty(
+                (1, 0, nheads, headdim, dstate), dtype=result_dtype, device=x.device
+            )
         )
+    else:
+        intermediate_states = None
 
     if return_track_states:
         if (

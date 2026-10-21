@@ -332,10 +332,21 @@ class NemotronHMoE(nn.Module):
         # aten::mm.dtype is not implemented by the CPU backend in some PyTorch
         # builds.  CPU inference still needs fp32 router logits for topk, so
         # explicitly upcast inputs before matmul instead of using out_dtype.
-        gate_weight_t = self.gate.weight.t()
         if hidden_states.device.type == "cpu":
-            return torch.mm(hidden_states.float(), gate_weight_t.float())
-        return torch.mm(hidden_states, gate_weight_t, out_dtype=torch.float32)
+            # The gate is an unquantized ReplicatedLinear whose weight is
+            # VNNI-packed in place at load time when CPU+AMX is available
+            # (UnquantizedLinearMethod.process_weights_after_loading). A raw
+            # torch.mm would read the packed bytes as if unpacked and produce
+            # garbage logits, so route through the AMX gemm that understands
+            # the packed layout; otherwise fall back to a plain fp32 matmul.
+            from sglang.srt.utils import use_intel_amx_backend
+
+            if use_intel_amx_backend(self.gate):
+                return torch.ops.sgl_kernel.weight_packed_linear(
+                    hidden_states.contiguous(), self.gate.weight, None, True
+                ).float()
+            return torch.mm(hidden_states.float(), self.gate.weight.t().float())
+        return torch.mm(hidden_states, self.gate.weight.t(), out_dtype=torch.float32)
 
     def _apply_latent_projection(
         self,

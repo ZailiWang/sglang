@@ -1245,6 +1245,8 @@ class CausalLingBotWorldTransformerBlock(CausalWanTransformerBlock):
         return reference()
 
     def _can_fuse_qkv_projection(self) -> bool:
+        if current_platform.is_cpu():
+            return False
         if self._qkv_fused:
             return True
 

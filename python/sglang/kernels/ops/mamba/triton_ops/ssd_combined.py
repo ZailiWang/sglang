@@ -572,92 +572,34 @@ def mamba_chunk_scan_combined(
     """
 
     if x.device.type == "cpu":
-        use_native = x.dtype in (torch.bfloat16, torch.float16)
-        if return_varlen_states:
-            assert cu_seqlens is not None, (
-                "cu_seqlens must be provided if return_varlen_states is True"
-            )
-        if use_native and return_varlen_states:
-            assert x.shape[0] == 1, "CPU varlen Mamba scan requires batch=1"
-            return _mamba_chunk_scan_cpu_varlen(
-                x,
-                dt,
-                A,
-                B,
-                C,
-                chunk_size,
-                D,
-                z,
-                dt_bias,
-                initial_states,
-                cu_seqlens,
-                dt_softplus,
-                dt_limit,
-                out,
-                return_final_states,
-                return_intermediate_states,
-                state_dtype,
-                return_track_states,
-                track_seq_idx,
-                track_end_locs,
-            )
-        if (
-            not use_native
-            or seq_idx is not None
-            or chunk_indices is not None
-            or chunk_offsets is not None
-            or return_varlen_states
-            or return_intermediate_states
-            or return_track_states
-        ):
-            if return_track_states:
-                assert return_varlen_states, (
-                    "return_track_states requires return_varlen_states (cu_seqlens mode)"
-                )
-            return _mamba_chunk_scan_cpu_reference(
-                x,
-                dt,
-                A,
-                B,
-                C,
-                chunk_size,
-                D,
-                z,
-                dt_bias,
-                initial_states,
-                seq_idx,
-                cu_seqlens if return_varlen_states else None,
-                dt_softplus,
-                dt_limit,
-                out,
-                return_final_states,
-                return_varlen_states,
-                return_intermediate_states,
-                state_dtype,
-                return_track_states,
-                track_seq_idx,
-                track_end_locs,
-            )
-        import sgl_kernel  # noqa: F401
+        from .torch_native import mamba_chunk_scan_combined_native
 
-        _, final_states = torch.ops.sgl_kernel.mamba_chunk_scan_combined_cpu(
+        return mamba_chunk_scan_combined_native(
             x,
             dt,
             A,
             B,
             C,
             chunk_size,
-            D,
-            z,
-            dt_bias,
-            initial_states,
-            dt_softplus,
-            dt_limit[0],
-            dt_limit[1],
-            state_dtype,
-            out,
+            D=D,
+            z=z,
+            dt_bias=dt_bias,
+            initial_states=initial_states,
+            seq_idx=seq_idx,
+            chunk_indices=chunk_indices,
+            chunk_offsets=chunk_offsets,
+            cu_seqlens=cu_seqlens,
+            dt_softplus=dt_softplus,
+            dt_limit=dt_limit,
+            out=out,
+            return_final_states=return_final_states,
+            return_varlen_states=return_varlen_states,
+            return_intermediate_states=return_intermediate_states,
+            state_dtype=state_dtype,
+            return_track_states=return_track_states,
+            track_seq_idx=track_seq_idx,
+            track_end_locs=track_end_locs,
         )
-        return final_states if return_final_states else None
 
     if not return_varlen_states:
         cu_seqlens = None

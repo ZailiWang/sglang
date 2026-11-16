@@ -398,6 +398,32 @@ def selective_state_update(
         enable_stochastic_rounding: Whether to stochastically round final FP16 SSM cache writes.
         cache_philox_rounds: Number of Philox rounds to use when stochastic rounding is enabled.
     """
+    if state.device.type == "cpu":
+        from .torch_native import selective_state_update_native
+
+        return selective_state_update_native(
+            state,
+            x,
+            dt,
+            A,
+            B,
+            C,
+            D=D,
+            z=z,
+            dt_bias=dt_bias,
+            dt_softplus=dt_softplus,
+            state_batch_indices=state_batch_indices,
+            pad_slot_id=pad_slot_id,
+            out=out,
+            disable_state_update=disable_state_update,
+            intermediate_states_buffer=intermediate_states_buffer,
+            cache_steps=cache_steps,
+            retrieve_parent_token=retrieve_parent_token,
+            intermediate_state_indices=intermediate_state_indices,
+            enable_stochastic_rounding=enable_stochastic_rounding,
+            cache_philox_rounds=cache_philox_rounds,
+        )
+
     if cache_philox_rounds < 0:
         raise ValueError("cache_philox_rounds must be non-negative.")
     if enable_stochastic_rounding and state.dtype != torch.float16:

@@ -340,7 +340,7 @@ def handle_cpu_backends(server_args: Any):
                 server_args,
                 "_handle_cpu_backends",
                 attention_backend=(
-                    "torch_native" if is_host_cpu_arm64() else "intel_amx"
+                    "torch_native"
                 ),
             )
         declare_resolution(

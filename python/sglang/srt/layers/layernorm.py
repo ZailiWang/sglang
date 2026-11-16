@@ -1026,19 +1026,7 @@ class RMSNorm(BaseFusedOp):
         post_residual_addition: Optional[torch.Tensor] = None,
         quant_linear: Optional[nn.Module] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        # Fallback experiment path: force residual + RMSNorm to torch-native math
-        # instead of fused_add_rmsnorm_cpu.
-        if residual is not None:
-            return self.forward_native(
-                x, residual, post_residual_addition, quant_linear
-            )
-
-        if _is_cpu_amx_available:
-            return torch.ops.sgl_kernel.rmsnorm_cpu(
-                x, self.weight.data, self.variance_epsilon
-            )
-
-        return self.forward_native(x, residual, post_residual_addition)
+        return self.forward_native(x, residual, post_residual_addition, quant_linear)
 
     def forward_xpu(
         self,

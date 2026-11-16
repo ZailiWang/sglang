@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 import torch
@@ -201,25 +200,7 @@ def causal_conv1d_fn_cpu(
     query_start_loc,
     seq_lens_cpu,
 ):
-    # Default to torch-native fallback path. Set
-    # SGLANG_FORCE_NATIVE_CAUSAL_CONV1D_FWD_CPU=0 to force the kernel path.
-    use_native = os.environ.get("SGLANG_FORCE_NATIVE_CAUSAL_CONV1D_FWD_CPU", "1") != "0"
-    silu_activation = activation == "silu"
-
-    if use_native:
-        return causal_conv1d_fwd_cpu_torch(
-            mixed_qkv_transposed,
-            conv_weights,
-            bias,
-            conv_states,
-            query_start_loc,
-            cache_indices,
-            has_initial_state,
-            silu_activation,
-            -1,
-        )
-
-    return torch.ops.sgl_kernel.causal_conv1d_fwd_cpu(
+    return causal_conv1d_fwd_cpu_torch(
         mixed_qkv_transposed,
         conv_weights,
         bias,
@@ -227,26 +208,42 @@ def causal_conv1d_fn_cpu(
         query_start_loc,
         cache_indices,
         has_initial_state,
-        silu_activation,
+        activation == "silu",
         -1,
-        True,
     )
 
 
 def causal_conv1d_update_cpu(
     mixed_qkv, conv_states, conv_weights, bias, activation, conv_state_indices
 ):
-    return torch.ops.sgl_kernel.causal_conv1d_update_cpu(
-        mixed_qkv.contiguous(),
-        conv_states,
-        conv_weights,
-        bias,
-        activation == "silu",
-        None,
-        conv_state_indices,
-        -1,
-        True,
-    )
+    x = mixed_qkv.contiguous()
+    silu_activation = activation == "silu"
+
+    if x.dim() == 1:
+        x = x.unsqueeze(0)
+
+    out = torch.empty_like(x)
+
+    for i in range(x.size(0)):
+        state_idx = int(conv_state_indices[i].item()) if conv_state_indices is not None else i
+        state = conv_states[state_idx] if conv_states is not None else None
+        x_i = x[i]
+        if x_i.dim() != 1:
+            x_i = x_i.reshape(-1)
+
+        out_seq, final_state = _causal_conv1d_single_seq_torch(
+            x_i.unsqueeze(-1),
+            conv_weights,
+            bias,
+            state,
+            state is not None,
+            silu_activation,
+        )
+        out[i].copy_(out_seq[:, 0])
+        if conv_states is not None:
+            conv_states[state_idx].copy_(final_state)
+
+    return out
 
 
 def chunk_gated_delta_rule_cpu(

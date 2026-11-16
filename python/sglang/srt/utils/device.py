@@ -384,11 +384,13 @@ except:
 
 
 def cpu_has_amx_support():
-    return is_amx_tile_supported and _is_intel_amx_backend_available()
+    # Debug path: force pure torch-native CPU execution.
+    return False
 
 
 def use_intel_amx_backend(layer):
-    return getattr(layer, "use_intel_amx_backend", False)
+    # Debug path: never select AMX backend.
+    return False
 
 
 def xpu_has_xmx_support():

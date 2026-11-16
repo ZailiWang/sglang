@@ -12,6 +12,11 @@ from sglang.kernels.ops.mamba.triton_ops.mamba_ssm import (
     PAD_SLOT_ID,
     selective_state_update,
 )
+from sglang.kernels.ops.mamba.triton_ops.ssd_combined import _mamba_chunk_scan_cpu_varlen
+from sglang.kernels.ops.mamba.triton_ops.torch_native import (
+    mamba_chunk_scan_combined_native,
+    selective_state_update_native,
+)
 from sglang.test.ci.ci_register import register_cpu_ci
 
 register_cpu_ci(est_time=30, suite="stage-a-test-cpu-intel")
@@ -857,6 +862,142 @@ def test_nemotron_selective_state_update_cpu_decode_pad_slot_model_shape():
     assert torch.equal(state[5], state_before[5])
     assert torch.equal(state[6], state_before[6])
     assert torch.equal(state[7], state_before[7])
+
+
+def test_torch_native_selective_state_update_matches_cpu_kernel_op():
+    torch.manual_seed(3031)
+    dtype = torch.bfloat16
+    batch, time, nheads, dim, dstate, ngroups = 3, 4, 4, 16, 32, 2
+
+    state_native = torch.randn(batch, nheads, dim, dstate, dtype=dtype)
+    state_kernel = state_native.clone()
+    x = torch.randn(batch, time, nheads, dim, dtype=dtype)
+    dt = torch.randn_like(x)
+    A = -torch.rand(nheads, dim, dstate, dtype=torch.float32) - 0.5
+    B = torch.randn(batch, time, ngroups, dstate, dtype=dtype)
+    C = torch.randn_like(B)
+    D = torch.randn(nheads, dim, dtype=torch.float32)
+    z = torch.randn_like(x)
+    dt_bias = torch.randn(nheads, dim, dtype=torch.float32) - 3.0
+    out_native = torch.empty_like(x)
+    out_kernel = torch.empty_like(x)
+
+    selective_state_update_native(
+        state_native,
+        x,
+        dt,
+        A,
+        B,
+        C,
+        D=D,
+        z=z,
+        dt_bias=dt_bias,
+        dt_softplus=True,
+        out=out_native,
+    )
+    torch.ops.sgl_kernel.selective_state_update_cpu(
+        state_kernel,
+        x,
+        dt,
+        A,
+        B,
+        C,
+        D,
+        z,
+        dt_bias,
+        True,
+        None,
+        PAD_SLOT_ID,
+        False,
+        out_kernel,
+    )
+
+    torch.testing.assert_close(out_native.float(), out_kernel.float(), rtol=0.03, atol=0.06)
+    torch.testing.assert_close(
+        state_native.float(), state_kernel.float(), rtol=0.03, atol=0.06
+    )
+
+
+def test_torch_native_chunk_scan_varlen_matches_cpu_kernel_path():
+    torch.manual_seed(3032)
+    dtype = torch.bfloat16
+    batch, seqlen, nheads, headdim, dstate, ngroups = 1, 47, 4, 8, 16, 2
+    chunk_size = 16
+
+    x = 0.1 * torch.randn(batch, seqlen, nheads, headdim, dtype=dtype)
+    dt = 0.1 * torch.randn(batch, seqlen, nheads, dtype=dtype)
+    A = -torch.rand(nheads, dtype=torch.float32) - 0.1
+    B = 0.1 * torch.randn(batch, seqlen, ngroups, dstate, dtype=dtype)
+    C = 0.1 * torch.randn_like(B)
+    D = 0.1 * torch.randn(nheads, headdim, dtype=torch.float32)
+    z = 0.1 * torch.randn(batch, seqlen, nheads, headdim, dtype=dtype)
+    dt_bias = 0.1 * torch.randn(nheads, dtype=torch.float32)
+    cu_seqlens = torch.tensor([0, 11, 19, seqlen], dtype=torch.int32)
+    initial_states = (
+        torch.randn(cu_seqlens.numel() - 1, nheads, headdim, dstate, dtype=dtype) * 0.01
+    )
+    track_seq_idx = torch.tensor([0, 1, 2], dtype=torch.int32)
+    track_end_locs = torch.tensor([10, 18, 46], dtype=torch.int32)
+
+    out_native = torch.empty_like(x)
+    out_kernel_path = torch.empty_like(x)
+
+    states_native, varlen_native, track_native = mamba_chunk_scan_combined_native(
+        x,
+        dt,
+        A,
+        B,
+        C,
+        chunk_size,
+        D=D,
+        z=z,
+        dt_bias=dt_bias,
+        initial_states=initial_states,
+        cu_seqlens=cu_seqlens,
+        dt_softplus=True,
+        dt_limit=(0.0, float("inf")),
+        out=out_native,
+        return_varlen_states=True,
+        return_track_states=True,
+        track_seq_idx=track_seq_idx,
+        track_end_locs=track_end_locs,
+    )
+
+    states_kernel_path, varlen_kernel_path, track_kernel_path = _mamba_chunk_scan_cpu_varlen(
+        x,
+        dt,
+        A,
+        B,
+        C,
+        chunk_size,
+        D,
+        z,
+        dt_bias,
+        initial_states,
+        cu_seqlens,
+        True,
+        (0.0, float("inf")),
+        out_kernel_path,
+        return_final_states=False,
+        return_intermediate_states=False,
+        state_dtype=None,
+        return_track_states=True,
+        track_seq_idx=track_seq_idx,
+        track_end_locs=track_end_locs,
+    )
+
+    torch.testing.assert_close(
+        out_native.float(), out_kernel_path.float(), rtol=0.03, atol=0.06
+    )
+    torch.testing.assert_close(
+        states_native.float(), states_kernel_path.float(), rtol=0.03, atol=0.06
+    )
+    torch.testing.assert_close(
+        varlen_native.float(), varlen_kernel_path.float(), rtol=0.03, atol=0.06
+    )
+    torch.testing.assert_close(
+        track_native.float(), track_kernel_path.float(), rtol=0.03, atol=0.06
+    )
 
 
 if __name__ == "__main__":

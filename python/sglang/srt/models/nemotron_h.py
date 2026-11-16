@@ -414,9 +414,7 @@ class NemotronHMoE(nn.Module):
         with self.device_module.stream(alt_stream):
             # router_scores: [num_tokens, num_experts]
             # bf16 gemm on tensor cores with fp32 accumulation/output for sigmoid/topk.
-            router_logits = torch.mm(
-                hidden_states, self.gate.weight.t(), out_dtype=torch.float32
-            )
+            router_logits = self._compute_router_logits(hidden_states)
             topk_output = self.topk(
                 hidden_states,
                 router_logits,
@@ -439,9 +437,7 @@ class NemotronHMoE(nn.Module):
         call.ready.record()
         _launch_prefill_shared_expert(self.shared_experts, hidden_states, call)
         shared_output = call.output
-        router_logits = torch.mm(
-            hidden_states, self.gate.weight.t(), out_dtype=torch.float32
-        )
+        router_logits = self._compute_router_logits(hidden_states)
         topk_output = self.topk(
             hidden_states,
             router_logits,

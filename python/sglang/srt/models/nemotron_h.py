@@ -30,6 +30,7 @@ from sglang.srt.environ import envs
 from sglang.srt.eplb.expert_distribution import get_global_expert_distribution_recorder
 from sglang.srt.eplb.expert_location import ModelConfigForExpertLocation
 from sglang.srt.layers.activation import ReLU2
+from sglang.srt.layers.amx_utils import weight_packed_linear_or_fallback
 from sglang.srt.layers.attention.hybrid_linear_attn_backend import (
     HybridLinearAttnBackend,
     Mamba2AttnBackend,
@@ -485,7 +486,7 @@ class NemotronHMoE(nn.Module):
             from sglang.srt.utils import use_intel_amx_backend
 
             if use_intel_amx_backend(self.gate):
-                return torch.ops.sgl_kernel.weight_packed_linear(
+                return weight_packed_linear_or_fallback(
                     hidden_states.contiguous(), self.gate.weight, None, True
                 ).float()
             return torch.mm(hidden_states.float(), self.gate.weight.t().float())

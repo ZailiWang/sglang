@@ -1,6 +1,7 @@
 import logging
 
 import torch
+import torch.nn.functional as F
 import transformers
 
 from sglang.srt.utils import cpu_has_amx_support
@@ -124,6 +125,30 @@ def _init_amx_conv_state(conv_state):
     return conv_state_cpu
 
 
+def weight_packed_linear_fallback(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    bias: torch.Tensor | None = None,
+    is_vnni: bool = True,
+) -> torch.Tensor:
+    """Torch-native debug counterpart for weight_packed_linear.
+
+    The fallback assumes ``weight`` is an unpacked [out_features, in_features]
+    matrix and computes F.linear(x, weight, bias).
+    """
+    return F.linear(x, weight, bias)
+
+
+def weight_packed_linear_or_fallback(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    bias: torch.Tensor | None = None,
+    is_vnni: bool = True,
+) -> torch.Tensor:
+    # Debug path: always use the torch-native counterpart.
+    return weight_packed_linear_fallback(x, weight, bias, is_vnni)
+
+
 def _amx_process_weight_after_loading(
     module, weight_names, transpose_dims=None, qweight_packed_method=None
 ) -> None:
@@ -165,6 +190,16 @@ def _amx_process_weight_after_loading(
                 return
 
             prepared_weights.append((weight_name, weight_tensor, is_conv_weight))
+
+        # Nemotron-H debug path: keep non-conv weights in raw
+        # [out_features, in_features] layout and disable AMX packed backend on
+        # this module so native fallback receives unpacked input.
+        is_nemotron_h_module = "sglang.srt.models.nemotron_h" in (
+            module.__class__.__module__
+        )
+        if is_nemotron_h_module and any(not item[2] for item in prepared_weights):
+            module.use_intel_amx_backend = False
+            return
 
         for weight_name, weight_tensor, is_conv_weight in prepared_weights:
             packed_weight = torch.nn.Parameter(

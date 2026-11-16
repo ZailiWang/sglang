@@ -1103,8 +1103,9 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, BaseFusedOp):
             )
             torch.cuda.empty_cache()
 
-        # Pack weight for get better performance on CPU
-        if _is_cpu and _is_cpu_amx_available:
+        # Pack weight for better CPU performance, except relu2 MoE where the
+        # fallback torch path consumes canonical (unpacked) expert tensors.
+        if _is_cpu and _is_cpu_amx_available and layer.moe_runner_config.activation != "relu2":
             _amx_process_weight_after_loading(layer, ["w13_weight", "w2_weight"])
             if hasattr(layer, "w13_weight_bias"):
                 layer.w13_weight_bias = Parameter(

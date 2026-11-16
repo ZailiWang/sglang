@@ -191,13 +191,21 @@ def _amx_process_weight_after_loading(
 
             prepared_weights.append((weight_name, weight_tensor, is_conv_weight))
 
-        # Nemotron-H debug path: keep non-conv weights in raw
-        # [out_features, in_features] layout and disable AMX packed backend on
-        # this module so native fallback receives unpacked input.
-        is_nemotron_h_module = "sglang.srt.models.nemotron_h" in (
-            module.__class__.__module__
+        # Nemotron-H debug path for router gate only: keep non-conv gate
+        # weight in raw [out_features, in_features] layout and disable AMX
+        # packed backend so native fallback receives unpacked input.
+        module_prefix = getattr(module, "prefix", "")
+        weight_shape = tuple(prepared_weights[0][1].shape) if prepared_weights else ()
+        is_nemotron_h_gate = (
+            ".moe.gate" in module_prefix
+            or (
+                module.__class__.__name__ == "ReplicatedLinear"
+                and len(prepared_weights) == 1
+                and prepared_weights[0][0] == "weight"
+                and weight_shape == (128, 2688)
+            )
         )
-        if is_nemotron_h_module and any(not item[2] for item in prepared_weights):
+        if is_nemotron_h_gate and any(not item[2] for item in prepared_weights):
             module.use_intel_amx_backend = False
             return
 

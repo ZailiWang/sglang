@@ -108,6 +108,12 @@ if _is_cuda:
     )
 
 
+def _debug_forward_print(module: nn.Module) -> None:
+    tp_rank = getattr(get_parallel(), "tp_rank", 0)
+    if tp_rank == 0:
+        print(f"[TP{tp_rank}] {module.__class__.__name__}.forward", flush=True)
+
+
 class NemotronHMLP(nn.Module):
     def __init__(
         self,
@@ -145,6 +151,7 @@ class NemotronHMLP(nn.Module):
         self,
         x: torch.Tensor,
     ):
+        _debug_forward_print(self)
         x, _ = self.up_proj(x)
         x = self.act_fn(x)
         x, _ = self.down_proj(x)
@@ -497,6 +504,7 @@ class NemotronHMoE(nn.Module):
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch | None = None,
     ) -> torch.Tensor:
+        _debug_forward_print(self)
         num_tokens, hidden_dim = hidden_states.shape
         # routed_scaling_factor is fused into the experts call (applied by the
         # MoE runner / topk), so final_hidden_states is already scaled.
@@ -531,6 +539,7 @@ class NemotronHMLPLikeDecoderLayer(nn.Module):
         hidden_states,
         forward_batch: ForwardBatch,
     ):
+        _debug_forward_print(self)
         hidden_states = self.boundary.prepare(hidden_states, forward_batch)
         hidden_states = self.mixer.forward(hidden_states)
         return self.boundary.finish(hidden_states, forward_batch)
@@ -601,6 +610,7 @@ class NemotronHMoEDecoderLayer(NemotronHMLPLikeDecoderLayer):
         hidden_states,
         forward_batch: ForwardBatch,
     ):
+        _debug_forward_print(self)
         hidden_states = self.boundary.prepare(hidden_states, forward_batch)
         hidden_states = self.mixer.forward(hidden_states, forward_batch=forward_batch)
         return self.boundary.finish(hidden_states, forward_batch)
@@ -622,6 +632,7 @@ class NemotronHAttnLikeDecoderLayer(nn.Module):
         hidden_states,
         forward_batch: ForwardBatch,
     ):
+        _debug_forward_print(self)
         hidden_states = self.boundary.prepare(hidden_states, forward_batch)
         if forward_batch.forward_mode.is_idle():
             return hidden_states
@@ -760,6 +771,7 @@ class NemotronHAttention(nn.Module):
         hidden_states: torch.Tensor,
         forward_batch: ForwardBatch,
     ) -> torch.Tensor:
+        _debug_forward_print(self)
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         attn_output = self.attn.forward(q, k, v, forward_batch)
@@ -871,6 +883,7 @@ class NemotronHModel(nn.Module):
         pp_proxy_tensors: PPProxyTensors | None = None,
         inputs_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor | PPProxyTensors:
+        _debug_forward_print(self)
         if self.pp_group.is_first_rank:
             if inputs_embeds is not None:
                 hidden_states = inputs_embeds
@@ -1197,6 +1210,7 @@ class NemotronHForCausalLM(nn.Module):
         input_embeds: torch.Tensor | None = None,
         pp_proxy_tensors: PPProxyTensors | None = None,
     ):
+        _debug_forward_print(self)
         self.prepare_for_forward(forward_batch)
         hidden_states = self.model.forward(
             input_ids, positions, forward_batch, pp_proxy_tensors, input_embeds
